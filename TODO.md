@@ -1,3 +1,3 @@
-- [ ] Create a commands registration flow to set up our commands
+- [x] Create a commands registration flow to set up our commands
 - [ ] Go through main and fix all the error handling
 - [ ] Document the flow to install the app into discord to set up the commands

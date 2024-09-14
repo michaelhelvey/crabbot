@@ -5,75 +5,33 @@ use axum::{
 };
 use color_eyre::Result;
 use response::{HttpResult, IntoHttp};
-use serde::{Deserialize, Deserializer, Serialize};
-use serde_json::{json, Value};
-use serde_repr::Serialize_repr;
+use serde_json::json;
 use tokio::net::TcpListener;
 use tower_http::trace::TraceLayer;
 use tracing::info;
 
+use message::{
+    ApplicationCommandMessage, Message, RESP_TYPE_CHANNEL_MESSAGE_WITH_SOURCE, RESP_TYPE_PONG,
+};
+
 mod auth;
+mod message;
 mod response;
 mod utils;
-
-#[derive(Debug, Serialize, Deserialize)]
-struct ApplicationCommandMessage {
-    name: String,
-}
-
-#[derive(Debug)]
-enum Message {
-    // Ping = 1
-    Ping,
-    // ApplicationCommand = 2
-    ApplicationCommand(ApplicationCommandMessage),
-}
-
-#[derive(Debug, Deserialize)]
-struct MessageHelper {
-    r#type: u8,
-    #[serde(default)]
-    data: Value,
-}
-
-impl<'de> Deserialize<'de> for Message {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: Deserializer<'de>,
-    {
-        info!("deserializing");
-        let helper = MessageHelper::deserialize(deserializer)?;
-
-        info!("deserializing helper {helper:?}");
-        match helper.r#type {
-            1 => Ok(Message::Ping),
-            2 => {
-                let data: ApplicationCommandMessage =
-                    serde_json::from_value(helper.data).map_err(serde::de::Error::custom)?;
-                Ok(Message::ApplicationCommand(data))
-            }
-            _ => Err(serde::de::Error::custom("unknown message type")),
-        }
-    }
-}
 
 async fn interactions_handler(Json(message): Json<Message>) -> HttpResult {
     info!("received message from discord: {message:?}");
     match message {
-        Message::Ping => {
-            return Json(json!({ "type": 1 })).into_http();
-        }
-        Message::ApplicationCommand(ApplicationCommandMessage { name }) => {
-            info!("received application command with name {name:?}");
-            return Json(json!(
+        Message::Ping => Json(json!({ "type": RESP_TYPE_PONG })).into_http(),
+        Message::ApplicationCommand(ApplicationCommandMessage { name, .. }) => {
+            Json(json!(
                 {
-                    "type": 4, // Channel message with source
-                    "data": { "content": "Hi there from the bot" }
+                    "type": RESP_TYPE_CHANNEL_MESSAGE_WITH_SOURCE, // Channel message with source
+                    "data": { "content": format!("The bot has received your message: {name:?}") }
                 }
             ))
-            .into_http();
+            .into_http()
         }
-        _ => unreachable!(),
     }
 }
 
@@ -104,26 +62,4 @@ async fn main() -> Result<()> {
     utils::init_tracing()?;
     start_api().await?;
     Ok(())
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_parse_discord_message() {
-        let content = r#"{
-            "type": 2,
-            "data": {
-                "name": "test"
-            }
-        }"#;
-        let message: Message = serde_json::from_str(content).unwrap();
-
-        let Message::ApplicationCommand(ApplicationCommandMessage { name }) = message else {
-            panic!("was not ApplicationCommand");
-        };
-
-        assert_eq!(name, "test");
-    }
 }

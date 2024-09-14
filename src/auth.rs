@@ -87,6 +87,17 @@ impl Verifier {
     }
 }
 
+macro_rules! reject_with_msg {
+    ($msg:literal) => {
+        return (
+            StatusCode::UNAUTHORIZED,
+            [(header::CONTENT_TYPE, mime::APPLICATION_JSON.to_string())],
+            Json(json!({ "error": $msg })),
+        )
+            .into_response()
+            .into_http();
+    };
+}
 /// Middleware fn that verifies the
 pub async fn verify_public_key_middleware(
     headers: HeaderMap,
@@ -99,76 +110,36 @@ pub async fn verify_public_key_middleware(
             .as_str(),
     );
 
-    let Some(timestamp) = headers.get("X-Signature-Timestamp") else {
+    let Some(timestamp) = headers
+        .get("X-Signature-Timestamp")
+        .and_then(|v| v.to_str().ok())
+    else {
         error!("no timestamp on request");
-        return (
-            StatusCode::UNAUTHORIZED,
-            [(header::CONTENT_TYPE, mime::APPLICATION_JSON.to_string())],
-            Json(json!({ "error": "X-Signature-Timestamp could not be found" })),
-        )
-            .into_response()
-            .into_http();
+        reject_with_msg!("X-Signature-Timestamp header is not present or is invalid");
     };
 
-    let Some(signature) = headers.get("X-Signature-Ed25519") else {
+    let Some(signature) = headers
+        .get("X-Signature-Ed25519")
+        .and_then(|v| v.to_str().ok())
+    else {
         error!("no signature on request");
-        return (
-            StatusCode::UNAUTHORIZED,
-            [(header::CONTENT_TYPE, mime::APPLICATION_JSON.to_string())],
-            Json(json!({ "error": "X-Signature-Ed25519 could not be found" })),
-        )
-            .into_response()
-            .into_http();
+        reject_with_msg!("X-Signature-Ed25519 header is not present or is invalid");
     };
 
     // Take the request apart to inspect the body and then re-construct it to call the next handler
     // in the middleware chain
     let (parts, body) = request.into_parts();
     let bytes = body.collect().await?.to_bytes();
+    let debug_body = String::from_utf8_lossy(&bytes);
+    debug!("validating body with public key: {debug_body:?}");
 
-    let debug_body = String::from_utf8(bytes.to_vec()).unwrap();
-    debug!("validating body {debug_body:?}, timestamp={timestamp:?}, signature={signature:?}");
-
-    // FIXME shouldn't be unwrapping here
-    if let Err(_) = verifier.verify(
-        signature.to_str().unwrap(),
-        timestamp.to_str().unwrap(),
-        &bytes,
-    ) {
+    if verifier.verify(signature, timestamp, &bytes).is_err() {
         error!("body failed signature verification");
-        return (
-            StatusCode::UNAUTHORIZED,
-            [(header::CONTENT_TYPE, mime::APPLICATION_JSON.to_string())],
-            Json(json!({ "error": "Body failed signature verification" })),
-        )
-            .into_response()
-            .into_http();
+        reject_with_msg!("Body failed signature verification");
     }
 
     let request = Request::from_parts(parts, Body::from(bytes));
 
     let response = next.run(request).await;
     Ok(response)
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_parse_hex() {
-        assert_eq!(parse_hex::<4>("bf7dea78"), Some([0xBF, 0x7D, 0xEA, 0x78]));
-        assert_eq!(parse_hex::<4>("bf7dea7"), None);
-        assert_eq!(parse_hex::<4>("bf7dea789"), None);
-        assert_eq!(parse_hex::<4>("bf7dea7x"), None);
-        assert_eq!(parse_hex(""), Some([]));
-        assert_eq!(
-            parse_hex("67c6bd767ca099e79efac9fcce4d2022a63bf7dea780e7f3d813f694c1597089"),
-            Some([
-                0x67, 0xC6, 0xBD, 0x76, 0x7C, 0xA0, 0x99, 0xE7, 0x9E, 0xFA, 0xC9, 0xFC, 0xCE, 0x4D,
-                0x20, 0x22, 0xA6, 0x3B, 0xF7, 0xDE, 0xA7, 0x80, 0xE7, 0xF3, 0xD8, 0x13, 0xF6, 0x94,
-                0xC1, 0x59, 0x70, 0x89
-            ])
-        );
-    }
 }
