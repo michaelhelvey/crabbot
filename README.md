@@ -22,4 +22,11 @@ _this assumes that you have the bot actually created via the Discord Developer P
 
 ## Deployment
 
-This is a WIP; long-term I'd like to use pulumi or something like that.
+Required depenencies:
+
+- Pulumi (authorized with your pulumi account)
+- AWS (authorized locally against the account you want to deploy to)
+
+Once you have this installed and setup, run `just deploy`. This will deploy the bot to your AWS
+account. Note that this project has no CI; as a personal project, there's just not any benefit for
+me to deploy from anything other than my local environment.

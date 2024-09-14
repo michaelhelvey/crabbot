@@ -1,0 +1,10 @@
+name: crabbot
+runtime:
+  name: nodejs
+  options:
+    packagemanager: pnpm
+description: IAC for deploying the CrabBot Discord app
+config:
+  pulumi:tags:
+    value:
+      pulumi:template: aws-typescript

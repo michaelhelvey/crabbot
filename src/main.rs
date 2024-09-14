@@ -26,8 +26,8 @@ async fn interactions_handler(Json(message): Json<Message>) -> HttpResult {
         Message::ApplicationCommand(ApplicationCommandMessage { name, .. }) => {
             Json(json!(
                 {
-                    "type": RESP_TYPE_CHANNEL_MESSAGE_WITH_SOURCE, // Channel message with source
-                    "data": { "content": format!("The bot has received your message: {name:?}") }
+                    "type": RESP_TYPE_CHANNEL_MESSAGE_WITH_SOURCE,
+                    "data": { "content": format!("Crabbot has received your command: {name:?}") }
                 }
             ))
             .into_http()

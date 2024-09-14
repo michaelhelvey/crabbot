@@ -3,3 +3,6 @@ proxy:
 
 register:
     node ./scripts/register.mjs
+
+deploy:
+    pulumi update --stack dev
